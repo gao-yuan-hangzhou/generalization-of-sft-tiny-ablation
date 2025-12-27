@@ -11,6 +11,7 @@ from .data import build_chat_text, iter_examples
 from .metrics import (
     check_extractable_json_schema,
     check_strict_json_schema,
+    count_json_objects,
     strip_leading_assistant_marker,
 )
 
@@ -82,6 +83,7 @@ def format_success_rate(
     ok = 0
     extracted_ok = 0
     first_char_brace_ok = 0
+    duplicate_json_objects = 0
     reasons: dict[str, int] = {}
     for i, schema in enumerate(schemas):
         completion_ids = outputs[i, prompt_len:]
@@ -91,6 +93,8 @@ def format_success_rate(
         stripped = completion_text.lstrip()
         if stripped.startswith("{"):
             first_char_brace_ok += 1
+        if count_json_objects(completion_text, max_objects=2) >= 2:
+            duplicate_json_objects += 1
 
         result = check_strict_json_schema(completion_text, schema)
         if result.ok:
@@ -106,6 +110,7 @@ def format_success_rate(
     # We keep reasons only for strict failures; extra counters are returned with "__" keys.
     reasons["__extractable_ok"] = extracted_ok
     reasons["__first_char_brace_ok"] = first_char_brace_ok
+    reasons["__duplicate_json_objects"] = duplicate_json_objects
     reasons["__total"] = total
     return ok / total, reasons
 
@@ -163,9 +168,19 @@ class FormatEvalCallback(TrainerCallback):
             self._writer.add_scalar("eval/extractable_json_rate", extracted_ok / max(total, 1), step)
             self._writer.add_scalar("eval/prefix_brace_rate", first_char_ok / max(total, 1), step)
             self._writer.add_scalar(
+                "eval/duplicate_json_objects_rate",
+                int(reasons.get("__duplicate_json_objects", 0)) / max(total, 1),
+                step,
+            )
+            self._writer.add_scalar(
                 "eval/extractable_json_rate_relaxed", relaxed_extracted_ok / max(relaxed_total, 1), step
             )
             self._writer.add_scalar("eval/prefix_brace_rate_relaxed", relaxed_first_char_ok / max(relaxed_total, 1), step)
+            self._writer.add_scalar(
+                "eval/duplicate_json_objects_rate_relaxed",
+                int(relaxed_reasons.get("__duplicate_json_objects", 0)) / max(relaxed_total, 1),
+                step,
+            )
             self._writer.flush()
             print(
                 f"[format_eval] step={step} eval/format_success_rate={rate:.4f} "
@@ -175,6 +190,10 @@ class FormatEvalCallback(TrainerCallback):
                 f"[format_eval] step={step} eval/extractable_json_rate={extracted_ok / max(total, 1):.4f} "
                 f"eval/prefix_brace_rate={first_char_ok / max(total, 1):.4f}"
             )
+            print(
+                f"[format_eval] step={step} eval/duplicate_json_objects_rate="
+                f"{int(reasons.get('__duplicate_json_objects', 0)) / max(total, 1):.4f}"
+            )
 
         if metrics is not None:
             metrics["eval_format_success_rate"] = rate
@@ -183,6 +202,9 @@ class FormatEvalCallback(TrainerCallback):
                 int(reasons.get("__total", 1)), 1
             )
             metrics["eval_prefix_brace_rate"] = int(reasons.get("__first_char_brace_ok", 0)) / max(
+                int(reasons.get("__total", 1)), 1
+            )
+            metrics["eval_duplicate_json_objects_rate"] = int(reasons.get("__duplicate_json_objects", 0)) / max(
                 int(reasons.get("__total", 1)), 1
             )
             for k, v in sorted(reasons.items())[:10]:

@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from sft_format_following.format_eval_callback import FormatEvalConfig, format_success_rate
-from sft_format_following.metrics import check_strict_json_schema
+from sft_format_following.metrics import check_strict_json_schema, count_json_objects
 
 
 def parse_args() -> argparse.Namespace:
@@ -79,7 +79,14 @@ def main() -> None:
     )
     reasons_clean = {k: v for k, v in reasons.items() if not k.startswith("__")}
     extras = {k: v for k, v in reasons.items() if k.startswith("__")}
-    result = {"format_success_rate": rate, "fail_reasons": reasons_clean, "extras": extras}
+    total = int(extras.get("__total", args.num_prompts) or 1)
+    duplicate_json_objects_rate = int(extras.get("__duplicate_json_objects", 0)) / max(total, 1)
+    result = {
+        "format_success_rate": rate,
+        "duplicate_json_objects_rate": duplicate_json_objects_rate,
+        "fail_reasons": reasons_clean,
+        "extras": extras,
+    }
     print(json.dumps(result, indent=2))
 
     if args.out_json is not None:
@@ -142,6 +149,7 @@ def main() -> None:
                         if completion_text.startswith("assistant") and "\n" in completion_text:
                             completion_text = completion_text.split("\n", 1)[1].lstrip()
                     check = check_strict_json_schema(completion_text, schema)
+                    num_json_objects = count_json_objects(completion_text, max_objects=3)
                     if args.only_failures and check.ok:
                         continue
                     out_row = {
@@ -151,6 +159,7 @@ def main() -> None:
                         "prompt": row.get("prompt"),
                         "pred": completion_text,
                         "pred_raw": raw_completion_text,
+                        "num_json_objects": num_json_objects,
                         "gold": row.get("completion"),
                         "schema": schema,
                     }

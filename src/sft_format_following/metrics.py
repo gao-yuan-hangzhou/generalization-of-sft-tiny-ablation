@@ -66,6 +66,57 @@ def extract_first_json_object(text: str) -> str | None:
     return None
 
 
+def extract_first_json_object_span(text: str) -> tuple[int, int] | None:
+    """
+    Return (start, end) for the first balanced JSON object substring, or None.
+    """
+    s = text
+    start = s.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_str = False
+    escape = False
+    for i in range(start, len(s)):
+        ch = s[i]
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+
+        if ch == '"':
+            in_str = True
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return start, i + 1
+    return None
+
+
+def count_json_objects(text: str, *, max_objects: int = 3) -> int:
+    """
+    Count balanced JSON object substrings in `text` (up to `max_objects`).
+    """
+    count = 0
+    offset = 0
+    while count < max_objects:
+        span = extract_first_json_object_span(text[offset:])
+        if span is None:
+            break
+        start, end = span
+        offset += end
+        count += 1
+    return count
+
+
 def _strict_json_loads(text: str) -> Any:
     text = text.strip()
     decoder = json.JSONDecoder()

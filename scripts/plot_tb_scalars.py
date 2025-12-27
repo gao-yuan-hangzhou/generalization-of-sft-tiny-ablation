@@ -11,7 +11,11 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--logdir", type=Path, required=True, help="Directory containing event files.")
     p.add_argument("--out_png", type=Path, required=True)
-    p.add_argument("--tags", type=str, default="train/loss,eval/loss,format_success_rate")
+    p.add_argument(
+        "--tags",
+        type=str,
+        default="train/loss,eval/loss,eval/format_success_rate,eval/duplicate_json_objects_rate",
+    )
     return p.parse_args()
 
 
@@ -43,4 +47,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

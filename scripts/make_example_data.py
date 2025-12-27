@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -151,13 +152,30 @@ def _hard_negative_eval_prefix_non_priming() -> str:
         "Do not add any extra words, labels, or fences.\n"
     )
 
-def _make_bad_output(rng: random.Random, json_text: str) -> str:
-    style = rng.choice(["assistant_fence", "assistant_preamble", "fence_only"])
+def _make_bad_output(rng: random.Random, json_text: str, *, alt_json_text: str | None = None) -> str:
+    style = rng.choice(["assistant_fence", "assistant_preamble", "fence_only", "duplicate_json"])
     if style == "assistant_fence":
         return f"assistant\n```json\n{json_text}\n```"
     if style == "assistant_preamble":
         return f"assistant\nSure! Here is the JSON you requested:\n{json_text}"
+    if style == "duplicate_json":
+        other = alt_json_text or json_text
+        return f"{json_text}\n{other}"
     return f"```json\n{json_text}\n```"
+
+
+def _make_bad_output_with_style(
+    rng: random.Random, json_text: str, *, alt_json_text: str | None = None
+) -> tuple[str, str]:
+    style = rng.choice(["assistant_fence", "assistant_preamble", "fence_only", "duplicate_json"])
+    if style == "assistant_fence":
+        return f"assistant\n```json\n{json_text}\n```", style
+    if style == "assistant_preamble":
+        return f"assistant\nSure! Here is the JSON you requested:\n{json_text}", style
+    if style == "duplicate_json":
+        other = alt_json_text or json_text
+        return f"{json_text}\n{other}", style
+    return f"```json\n{json_text}\n```", style
 
 
 def _fix_prompt(bad_output: str) -> str:
@@ -210,13 +228,20 @@ def make_example(
             completion = completion.lstrip("\n")
 
     if rng.random() < fix_prob:
-        bad_output = _make_bad_output(rng, completion)
+        alt_obj = {
+            "name": rng.choice([n for n in NAMES if n != name]),
+            "date": _iso_date(rng),
+            "amount": _amount(rng),
+        }
+        alt_json = json.dumps(alt_obj, separators=(",", ":"), ensure_ascii=False)
+        bad_output, bad_output_style = _make_bad_output_with_style(rng, completion, alt_json_text=alt_json)
         tx_text = _make_transaction_text(
             rng, name=name, date=date, amount=amount, item=item, strictness=instruction_strictness
         )
         prompt = _fix_prompt(bad_output) + base_instruction + f"Text: {tx_text}"
         variant = "fix_bad_output"
     else:
+        bad_output_style = None
         is_hard_negative = rng.random() < hard_negative_prob
         if is_hard_negative:
             if hard_negative_template == "train_priming":
@@ -246,6 +271,8 @@ def make_example(
         "schema": {"name": "str", "date": "date", "amount": "float"},
         "variant": variant,
         "json_format": fmt,
+        "instruction_strictness": instruction_strictness,
+        **({"bad_output_style": bad_output_style} if bad_output_style is not None else {}),
     }
 
 
@@ -335,6 +362,74 @@ def main() -> None:
 
     write_jsonl(args.out_dir / "train.jsonl", train)
     write_jsonl(args.out_dir / "eval.jsonl", eval_rows)
+
+    # Stats / metadata.
+    def _count(rows: list[dict[str, Any]], key: str) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for r in rows:
+            val = r.get(key, "<missing>")
+            out[str(val)] = out.get(str(val), 0) + 1
+        return dict(sorted(out.items(), key=lambda kv: (-kv[1], kv[0])))
+
+    def _filter(rows: list[dict[str, Any]], **conds: Any) -> list[dict[str, Any]]:
+        out = []
+        for r in rows:
+            ok = True
+            for k, v in conds.items():
+                if r.get(k) != v:
+                    ok = False
+                    break
+            if ok:
+                out.append(r)
+        return out
+
+    stats: dict[str, Any] = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "out_dir": str(args.out_dir),
+        "params": {
+            "n_train": args.n_train,
+            "n_eval": args.n_eval,
+            "seed": args.seed,
+            "hard_negative_prob_train": args.hard_negative_prob_train,
+            "hard_negative_prob_eval": args.hard_negative_prob_eval,
+            "fix_bad_output_prob_train": args.fix_bad_output_prob_train,
+            "eval_strictness": args.eval_strictness,
+        },
+        "train": {
+            "num_rows": len(train),
+            "variant_counts": _count(train, "variant"),
+            "json_format_counts": _count(train, "json_format"),
+            "bad_output_style_counts": _count(_filter(train, variant="fix_bad_output"), "bad_output_style"),
+        },
+        "eval": {
+            "num_rows": len(eval_rows),
+            "variant_counts": _count(eval_rows, "variant"),
+            "json_format_counts": _count(eval_rows, "json_format"),
+            "instruction_strictness_counts": _count(eval_rows, "instruction_strictness"),
+        },
+    }
+
+    stats_path = args.out_dir / "stats.json"
+    stats_path.write_text(json.dumps(stats, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    md_lines = []
+    md_lines.append("# Dataset Mix Summary\n")
+    md_lines.append(f"- created_at: `{stats['created_at']}`")
+    md_lines.append(f"- out_dir: `{stats['out_dir']}`\n")
+    md_lines.append("## Params")
+    for k, v in stats["params"].items():
+        md_lines.append(f"- `{k}`: `{v}`")
+    md_lines.append("\n## Train Mix")
+    md_lines.append(f"- num_rows: `{stats['train']['num_rows']}`")
+    md_lines.append(f"- variant_counts: `{stats['train']['variant_counts']}`")
+    md_lines.append(f"- json_format_counts: `{stats['train']['json_format_counts']}`")
+    md_lines.append(f"- bad_output_style_counts (fix_bad_output only): `{stats['train']['bad_output_style_counts']}`")
+    md_lines.append("\n## Eval Mix")
+    md_lines.append(f"- num_rows: `{stats['eval']['num_rows']}`")
+    md_lines.append(f"- variant_counts: `{stats['eval']['variant_counts']}`")
+    md_lines.append(f"- json_format_counts: `{stats['eval']['json_format_counts']}`")
+    md_lines.append(f"- instruction_strictness_counts: `{stats['eval']['instruction_strictness_counts']}`")
+    (args.out_dir / "stats.md").write_text("\n".join(md_lines) + "\n", encoding="utf-8")
 
     print(f"Wrote {len(train)} train and {len(eval_rows)} eval to {args.out_dir}")
 
