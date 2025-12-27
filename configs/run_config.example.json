@@ -1,0 +1,33 @@
+{
+  "data": {
+    "out_dir": "data/generated",
+    "n_train": 2000,
+    "n_eval": 1000,
+    "seed": 7,
+    "hard_negative_prob_train": 0.4,
+    "hard_negative_prob_eval": 0.4,
+    "fix_bad_output_prob_train": 0.25,
+    "eval_strictness": "medium"
+  },
+  "train": {
+    "model_name": "Qwen/Qwen2.5-0.5B-Instruct",
+    "train_file": "data/generated/train.jsonl",
+    "eval_file": "data/generated/eval.jsonl",
+    "output_dir": "outputs/qwen2_5_0_5b_json_sft_config_run",
+    "tb_logdir": "runs/qwen2_5_0_5b_json_sft_config_run",
+    "precision": "bf16",
+    "max_seq_length": 512,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "learning_rate": 0.0002,
+    "num_train_epochs": 2,
+    "logging_steps": 10,
+    "eval_steps": 25,
+    "save_steps": 25,
+    "save_total_limit": 10,
+    "n_format_eval_prompts": 200,
+    "format_eval_max_new_tokens": 96,
+    "eval_on_start": true
+  }
+}
+

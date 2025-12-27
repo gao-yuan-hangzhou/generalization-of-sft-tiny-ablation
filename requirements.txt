@@ -1,0 +1,8 @@
+transformers>=4.57
+datasets>=2.20
+accelerate>=0.33
+peft>=0.12
+trl>=0.26
+bitsandbytes>=0.43
+tensorboard>=2.17
+matplotlib>=3.8

@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+*.pyc
+*.pyo
+*.pyd
+
+*.log
+*.tmp
+
+outputs/
+runs/
+tb_runs/
+
+data/generated*/
