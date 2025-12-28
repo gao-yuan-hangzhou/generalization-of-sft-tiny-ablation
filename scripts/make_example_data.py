@@ -191,6 +191,11 @@ def _fix_prompt(bad_output: str) -> str:
     )
 
 
+def _make_duplicate_json_bad_output(json_text: str, alt_json_text: str) -> str:
+    # Common failure mode: outputting two JSON objects back-to-back.
+    return f"{json_text}\n{alt_json_text}"
+
+
 def make_example(
     rng: random.Random,
     ex_id: str,
@@ -198,6 +203,7 @@ def make_example(
     hard_negative_prob: float,
     hard_negative_template: str,
     fix_prob: float = 0.0,
+    fix_duplicate_json_prob: float = 0.0,
     instruction_strictness: str = "strict",
 ) -> dict:
     name = rng.choice(NAMES)
@@ -227,13 +233,22 @@ def make_example(
         if completion.startswith("\n"):
             completion = completion.lstrip("\n")
 
-    if rng.random() < fix_prob:
-        alt_obj = {
-            "name": rng.choice([n for n in NAMES if n != name]),
-            "date": _iso_date(rng),
-            "amount": _amount(rng),
-        }
-        alt_json = json.dumps(alt_obj, separators=(",", ":"), ensure_ascii=False)
+    alt_obj = {
+        "name": rng.choice([n for n in NAMES if n != name]),
+        "date": _iso_date(rng),
+        "amount": _amount(rng),
+    }
+    alt_json = json.dumps(alt_obj, separators=(",", ":"), ensure_ascii=False)
+
+    if rng.random() < fix_duplicate_json_prob:
+        bad_output = _make_duplicate_json_bad_output(completion, alt_json)
+        tx_text = _make_transaction_text(
+            rng, name=name, date=date, amount=amount, item=item, strictness=instruction_strictness
+        )
+        prompt = _fix_prompt(bad_output) + base_instruction + f"Text: {tx_text}"
+        variant = "fix_duplicate_json"
+        bad_output_style = "duplicate_json"
+    elif rng.random() < fix_prob:
         bad_output, bad_output_style = _make_bad_output_with_style(rng, completion, alt_json_text=alt_json)
         tx_text = _make_transaction_text(
             rng, name=name, date=date, amount=amount, item=item, strictness=instruction_strictness
@@ -326,6 +341,18 @@ def main() -> None:
         help="Probability of training examples that ask the model to fix a bad (chatty/fenced) output.",
     )
     p.add_argument(
+        "--fix_duplicate_json_prob_train",
+        type=float,
+        default=cfg_data.get("fix_duplicate_json_prob_train", 0.0),
+        help="Probability of training examples that ask the model to fix a duplicated-JSON output (JSON\\nJSON).",
+    )
+    p.add_argument(
+        "--train_strictness",
+        choices=["strict", "medium", "hard"],
+        default=cfg_data.get("train_strictness", "strict"),
+        help="Controls how explicit/difficult training prompts/text are (helps align with eval).",
+    )
+    p.add_argument(
         "--eval_strictness",
         choices=["strict", "medium", "hard"],
         default=cfg_data.get("eval_strictness", "strict"),
@@ -344,7 +371,8 @@ def main() -> None:
             hard_negative_prob=args.hard_negative_prob_train,
             hard_negative_template="train_priming",
             fix_prob=args.fix_bad_output_prob_train,
-            instruction_strictness="strict",
+            fix_duplicate_json_prob=args.fix_duplicate_json_prob_train,
+            instruction_strictness=args.train_strictness,
         )
         for i in range(args.n_train)
     ]
@@ -393,13 +421,19 @@ def main() -> None:
             "hard_negative_prob_train": args.hard_negative_prob_train,
             "hard_negative_prob_eval": args.hard_negative_prob_eval,
             "fix_bad_output_prob_train": args.fix_bad_output_prob_train,
+            "fix_duplicate_json_prob_train": args.fix_duplicate_json_prob_train,
+            "train_strictness": args.train_strictness,
             "eval_strictness": args.eval_strictness,
         },
         "train": {
             "num_rows": len(train),
             "variant_counts": _count(train, "variant"),
             "json_format_counts": _count(train, "json_format"),
-            "bad_output_style_counts": _count(_filter(train, variant="fix_bad_output"), "bad_output_style"),
+            "instruction_strictness_counts": _count(train, "instruction_strictness"),
+            "bad_output_style_counts": {
+                "fix_bad_output": _count(_filter(train, variant="fix_bad_output"), "bad_output_style"),
+                "fix_duplicate_json": _count(_filter(train, variant="fix_duplicate_json"), "bad_output_style"),
+            },
         },
         "eval": {
             "num_rows": len(eval_rows),
@@ -423,7 +457,7 @@ def main() -> None:
     md_lines.append(f"- num_rows: `{stats['train']['num_rows']}`")
     md_lines.append(f"- variant_counts: `{stats['train']['variant_counts']}`")
     md_lines.append(f"- json_format_counts: `{stats['train']['json_format_counts']}`")
-    md_lines.append(f"- bad_output_style_counts (fix_bad_output only): `{stats['train']['bad_output_style_counts']}`")
+    md_lines.append(f"- bad_output_style_counts: `{stats['train']['bad_output_style_counts']}`")
     md_lines.append("\n## Eval Mix")
     md_lines.append(f"- num_rows: `{stats['eval']['num_rows']}`")
     md_lines.append(f"- variant_counts: `{stats['eval']['variant_counts']}`")

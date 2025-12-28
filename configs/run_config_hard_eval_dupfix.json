@@ -1,21 +1,22 @@
 {
   "data": {
-    "out_dir": "data/generated_hard_eval",
-    "n_train": 2000,
+    "out_dir": "data/generated_hard_eval_dupfix_v4",
+    "n_train": 3000,
     "n_eval": 2000,
     "seed": 7,
     "hard_negative_prob_train": 0.4,
     "hard_negative_prob_eval": 0.4,
-    "fix_bad_output_prob_train": 0.25,
+    "fix_bad_output_prob_train": 0.15,
+    "fix_duplicate_json_prob_train": 0.35,
     "train_strictness": "hard",
     "eval_strictness": "hard"
   },
   "train": {
     "model_name": "Qwen/Qwen2.5-0.5B-Instruct",
-    "train_file": "data/generated_hard_eval/train.jsonl",
-    "eval_file": "data/generated_hard_eval/eval.jsonl",
-    "output_dir": "outputs/qwen2_5_0_5b_json_sft_hard_eval",
-    "tb_logdir": "runs/qwen2_5_0_5b_json_sft_hard_eval",
+    "train_file": "data/generated_hard_eval_dupfix_v4/train.jsonl",
+    "eval_file": "data/generated_hard_eval_dupfix_v4/eval.jsonl",
+    "output_dir": "outputs/qwen2_5_0_5b_json_sft_hard_eval_dupfix_v4",
+    "tb_logdir": "runs/qwen2_5_0_5b_json_sft_hard_eval_dupfix_v4",
     "precision": "bf16",
     "max_seq_length": 512,
     "per_device_train_batch_size": 1,
@@ -31,6 +32,7 @@
     "save_total_limit": 10,
     "n_format_eval_prompts": 200,
     "format_eval_max_new_tokens": 128,
-    "eval_on_start": true
+    "eval_on_start": true,
+    "max_eval_samples": 128
   }
 }

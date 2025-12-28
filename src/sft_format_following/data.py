@@ -40,7 +40,8 @@ def build_sft_text(tokenizer: Any, prompt: str, completion: str) -> str:
             tokenize=False,
             add_generation_prompt=True,
         )
-        return f"{prompt_text}{completion}"
+        eos = getattr(tokenizer, "eos_token", None) or ""
+        return f"{prompt_text}{completion}{eos}"
 
     return f"{prompt}\n{completion}"
 

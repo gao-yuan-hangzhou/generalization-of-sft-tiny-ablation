@@ -36,6 +36,8 @@ Start by copying `configs/run_config.example.json` to `run_config.json` and edit
 
 Hard-eval preset: `configs/run_config_hard_eval.json` (generates `data/generated_hard_eval/`).
 
+Hard-eval + duplicate-fix preset: `configs/run_config_hard_eval_dupfix.json` (generates `data/generated_hard_eval_dupfix_v4/`).
+
 ## Train (QLoRA + LoRA)
 
 ```bash
@@ -63,6 +65,8 @@ python scripts/train_sft_qlora.py \
 This runs an initial baseline eval at step `0` and logs metrics on every eval step.
 
 TensorBoard logs go to `runs/...` if you set `--tb_logdir` (otherwise `<output_dir>/tb`).
+
+Note: training text construction appends the tokenizer’s EOS token after each completion (it is stripped at decode time) to strongly encourage the model to stop right after the JSON object, reducing duplicate/extra generations.
 
 ## Evaluate format success rate
 
