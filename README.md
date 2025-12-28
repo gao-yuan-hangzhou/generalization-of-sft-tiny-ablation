@@ -38,6 +38,20 @@ Hard-eval preset: `configs/run_config_hard_eval.json` (generates `data/generated
 
 Hard-eval + duplicate-fix preset: `configs/run_config_hard_eval_dupfix.json` (generates `data/generated_hard_eval_dupfix_v4/`).
 
+## One-command run (regen → train → dump generations)
+
+```bash
+python scripts/make_example_data.py --config configs/run_config_hard_eval_dupfix.json && \
+python scripts/train_sft_qlora.py --config configs/run_config_hard_eval_dupfix.json && \
+python scripts/evaluate_format.py \
+  --base_model Qwen/Qwen2.5-0.5B-Instruct \
+  --adapter_dir outputs/qwen2_5_0_5b_json_sft_hard_eval_dupfix_v4 \
+  --eval_file data/generated_hard_eval_dupfix_v4/eval.jsonl \
+  --num_prompts 200 \
+  --max_new_tokens 128 \
+  --dump_jsonl outputs/qwen2_5_0_5b_json_sft_hard_eval_dupfix_v4/all_eval_generations.jsonl
+```
+
 ## Train (QLoRA + LoRA)
 
 ```bash
